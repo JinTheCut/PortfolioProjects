@@ -1,0 +1,5 @@
+
+body { font-family: system-ui, Arial, sans-serif; margin: 2rem; }
+#results { margin-top: 1rem; }
+.result { padding: 0.25rem 0; border-bottom: 1px solid #ddd; }
+.token { font-weight: bold; }

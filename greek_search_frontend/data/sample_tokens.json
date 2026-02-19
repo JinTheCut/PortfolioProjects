@@ -1,0 +1,10 @@
+[
+  {"line_id":1, "position":1, "token":"Ἑλλάς"},
+  {"line_id":1, "position":2, "token":"λόγος"},
+  {"line_id":1, "position":3, "token":"λόγος"},
+  {"line_id":1, "position":4, "token":"ἀνήρ"},
+  {"line_id":2, "position":1, "token":"Logos"},
+  {"line_id":2, "position":2, "token":"and"},
+  {"line_id":2, "position":3, "token":"reason"},
+  {"line_id":2, "position":4, "token":"λογος"}
+]

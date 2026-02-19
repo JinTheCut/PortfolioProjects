@@ -1,0 +1,15 @@
+
+name: CI
+on: [push, pull_request]
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      - name: Run sample validation
+        run: |
+          python3 tei_xml_pipeline/scripts/validate_and_normalize.py tei_xml_pipeline/sample_data/sample_tei.xml tei_xml_pipeline/build/normalized.xml
+          python3 tei_xml_pipeline/scripts/tei_to_tokens.py tei_xml_pipeline/build/normalized.xml tei_xml_pipeline/build/tokens.txt
