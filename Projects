@@ -1,0 +1,263 @@
+
+BEGIN;
+CREATE TABLE IF NOT EXISTS authors (
+  id SERIAL PRIMARY KEY,
+  name TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS works (
+  id SERIAL PRIMARY KEY,
+  author_id INT NOT NULL REFERENCES authors(id),
+  title TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS lines (
+  id SERIAL PRIMARY KEY,
+  work_id INT NOT NULL REFERENCES works(id),
+  n INT NOT NULL,
+  text TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS tokens (
+  id SERIAL PRIMARY KEY,
+  line_id INT NOT NULL REFERENCES lines(id),
+  position INT NOT NULL,
+  token TEXT NOT NULL
+);
+
+-- Example index for token search
+CREATE INDEX IF NOT EXISTS idx_tokens_token ON tokens(token);
+COMMIT;
+
+
+# PostgreSQL Text Schema (Starter)
+
+Minimal schema for storing authors, works, and tokenized text. Use this as a base to design richer models.
+
+## Quick start
+```sql
+-- Create schema
+\i schema.sql
+-- Load sample data
+\i sample_data/load_sample.sql
+```
+
+## Tables
+- authors(id, name)
+- works(id, author_id, title)
+- lines(id, work_id, n, text)
+- tokens(id, line_id, position, token)
+
+## What to extend next
+- Add indexes for faster lemma or token lookup
+- Add editions and citations (URNs)
+- Add materialized views for concordances
+
+
+INSERT INTO authors(name) VALUES ('Anon');
+INSERT INTO works(author_id, title) VALUES (1, 'Sample Greek Text');
+INSERT INTO lines(work_id, n, text) VALUES
+  (1, 1, 'Ἑλλάς λόγος. λόγος ἀνήρ.'),
+  (1, 2, 'Logos and reason: λογος.');
+
+-- Minimal tokenization example
+INSERT INTO tokens(line_id, position, token) VALUES
+  (1, 1, 'Ἑλλάς'), (1, 2, 'λόγος'), (1, 3, 'λόγος'), (1, 4, 'ἀνήρ'),
+  (2, 1, 'Logos'), (2, 2, 'and'), (2, 3, 'reason'), (2, 4, 'λογος');
+
+
+# TEI/XML Validation and Normalization Pipeline (Starter)
+
+This starter shows how to:
+- Parse TEI/XML using Python standard library
+- Normalize Unicode to NFC
+- Extract simple tokens for indexing
+- Run basic checks for TEI elements
+
+> Note: Full TEI schema validation typically uses RELAX NG via `lxml`. This starter keeps it dependency-free. You can add `lxml` later for strict validation.
+
+## Quick start
+```bash
+python3 scripts/validate_and_normalize.py sample_data/sample_tei.xml build/normalized.xml
+python3 scripts/tei_to_tokens.py build/normalized.xml build/tokens.txt
+```
+
+Outputs are placed in `build/`.
+
+## What to extend next
+- Add `lxml` and Relax NG validation
+- Extract TEI header metadata (author, title) into JSON
+- Emit CSV for PostgreSQL import
+```
+
+
+#!/usr/bin/env python3
+import sys, os, re, xml.etree.ElementTree as ET
+
+NS = {'tei': 'http://www.tei-c.org/ns/1.0'}
+
+WORD_RE = re.compile(r"[\wͰ-Ͽἀ-῿]+", re.UNICODE)
+
+
+def extract_text(elem):
+    # Concatenate all text inside <text>
+    texts = []
+    for t in elem.itertext():
+        texts.append(t)
+    return '
+'.join(texts)
+
+
+def main(inp, outp):
+    tree = ET.parse(inp)
+    root = tree.getroot()
+    text = root.find('.//tei:text', NS)
+    if text is None:
+        sys.stderr.write('No <text> element found.
+')
+        sys.exit(1)
+
+    full = extract_text(text)
+    tokens = WORD_RE.findall(full)
+
+    os.makedirs(os.path.dirname(outp), exist_ok=True)
+    with open(outp, 'w', encoding='utf-8') as f:
+        for tok in tokens:
+            f.write(tok + '
+')
+
+    print(f'Wrote tokens -> {outp} ({len(tokens)} tokens)')
+
+if __name__ == '__main__':
+    if len(sys.argv) < 3:
+        print('Usage: tei_to_tokens.py INPUT.xml OUTPUT.txt')
+        sys.exit(2)
+    main(sys.argv[1], sys.argv[2])
+
+
+#!/usr/bin/env python3
+import sys, os, unicodedata, xml.etree.ElementTree as ET
+
+def normalize_to_nfc(text: str) -> str:
+    return unicodedata.normalize('NFC', text)
+
+def main(inp, outp):
+    # Parse
+    try:
+        tree = ET.parse(inp)
+    except ET.ParseError as e:
+        sys.stderr.write(f"XML parse error: {e}
+")
+        sys.exit(1)
+
+    root = tree.getroot()
+
+    # Basic TEI checks (namespace-aware)
+    ns = {'tei': 'http://www.tei-c.org/ns/1.0'}
+    header = root.find('tei:teiHeader', ns)
+    if header is None:
+        sys.stderr.write('Warning: teiHeader not found.
+')
+
+    # Normalize text nodes to NFC by round-tripping string serialization
+    xml_str = ET.tostring(root, encoding='unicode')
+    xml_str = normalize_to_nfc(xml_str)
+
+    # Ensure output dir
+    os.makedirs(os.path.dirname(outp), exist_ok=True)
+    with open(outp, 'w', encoding='utf-8') as f:
+        f.write(xml_str)
+
+    print(f'Wrote normalized XML -> {outp}')
+
+if __name__ == '__main__':
+    if len(sys.argv) < 3:
+        print('Usage: validate_and_normalize.py INPUT.xml OUTPUT.xml')
+        sys.exit(2)
+    main(sys.argv[1], sys.argv[2])
+
+
+name: CI
+on: [push, pull_request]
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      - name: Run sample validation
+        run: |
+          python3 tei_xml_pipeline/scripts/validate_and_normalize.py tei_xml_pipeline/sample_data/sample_tei.xml tei_xml_pipeline/build/normalized.xml
+          python3 tei_xml_pipeline/scripts/tei_to_tokens.py tei_xml_pipeline/build/normalized.xml tei_xml_pipeline/build/tokens.txt
+
+
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xmlns="http://www.tei-c.org/ns/1.0">
+  <teiHeader>
+    <fileDesc>
+      <titleStmt>
+        <title>Sample Greek Text</title>
+        <author>Anon</author>
+      </titleStmt>
+      <publicationStmt>
+        <p>Sample data for demonstration</p>
+      </publicationStmt>
+      <sourceDesc>
+        <p>Constructed example</p>
+      </sourceDesc>
+    </fileDesc>
+  </teiHeader>
+  <text>
+    <body>
+      <p>Ἑλλάς λόγος. λόγος ἀνήρ.</p>
+      <p>Logos and reason: λογος.</p>
+    </body>
+  </text>
+</TEI>
+
+
+MIT License
+
+Copyright (c) 2026
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+
+# TLG Portfolio Starters
+
+This repository contains small, honest starter projects that demonstrate skills relevant to the Thesaurus Linguae Graecae (TLG) Specialist role: XML/TEI handling, Unicode normalization, SQL/PostgreSQL data modeling, web development (HTML/CSS/JS), Java, and Git workflows.
+
+Projects:
+- `tei_xml_pipeline`: Parse and normalize TEI/XML, extract tokens for indexing.
+- `postgres_text_schema`: Minimal PostgreSQL schema and sample data for texts.
+- `greek_search_frontend`: Static HTML/CSS/JS concordance-style UI using sample JSON.
+- `java_xml_reader`: Simple Java program that reads TEI/XML and prints counts.
+
+All examples are small and meant to be extended.
+
+## How to use
+1) Create a new GitHub repository (public or private).
+2) Copy these folders into your repo (or upload the ZIP).
+3) Commit with a message like: `chore: add TLG portfolio starters`.
+4) Follow each project's README for run instructions.
+Add portfolio starter projects
+## License
+MIT
